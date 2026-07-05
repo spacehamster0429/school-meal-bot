@@ -2,7 +2,7 @@
 
 대한민국 학교의 급식 정보를 Discord에서 조회하는 봇입니다. 교육부 NEIS Open API를 사용하며 서버와 DM에서 모두 동작합니다.
 
-## 급식봇 초대 및 사용: https://discord.com/oauth2/authorize?client_id=1506973963237199884
+### 급식봇 초대 및 사용: https://discord.com/oauth2/authorize?client_id=1506973963237199884
 
 ## 기능
 
