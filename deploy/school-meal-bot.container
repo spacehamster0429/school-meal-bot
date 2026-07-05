@@ -8,6 +8,7 @@ Image=localhost/school-meal-bot:latest
 ContainerName=school-meal-bot
 EnvironmentFile=%h/.config/school-meal-bot/school-meal-bot.env
 Volume=%h/.local/share/school-meal-bot:/data:Z
+UserNS=keep-id:uid=1000,gid=1000
 Pull=never
 ReadOnly=true
 Tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m
