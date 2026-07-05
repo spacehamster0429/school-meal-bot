@@ -11,6 +11,7 @@ Volume=%h/.local/share/school-meal-bot:/data:Z
 UserNS=keep-id:uid=1000,gid=1000
 Pull=never
 ReadOnly=true
+NoNewPrivileges=true
 Tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m
 
 [Service]
