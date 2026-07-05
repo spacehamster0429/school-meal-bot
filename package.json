@@ -1,0 +1,30 @@
+{
+  "name": "school-meal-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for Korean school meal information",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacehamster0429/school-meal-bot.git"
+  },
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js",
+    "check": "node --check index.js && node --check neis.js && node --check database.js && node --check deploy-commands.js && node --check test.js",
+    "smoke:neis": "node test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  },
+  "overrides": {
+    "undici": "6.27.0",
+    "ws": "8.21.0"
+  }
+}

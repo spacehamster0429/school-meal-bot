@@ -1,0 +1,21 @@
+[Unit]
+Description=School Meal Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/school-meal-bot:latest
+ContainerName=school-meal-bot
+EnvironmentFile=%h/.config/school-meal-bot/school-meal-bot.env
+Volume=%h/.local/share/school-meal-bot:/data:Z
+Pull=never
+ReadOnly=true
+Tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target
