@@ -21,6 +21,7 @@ const { searchSchools, getMeals, getMealsByRange } = require('./neis');
 
 const RATE_LIMIT_MS = 3000;
 const SELECT_TTL_MS = 10 * 60 * 1000;
+const MEAL_NAV_TTL_MS = 10 * 60 * 1000;
 const PAGE_TTL_MS = 30 * 60 * 1000;
 const SCHOOL_NAME_MIN_LENGTH = 2;
 const SCHOOL_NAME_MAX_LENGTH = 50;
@@ -40,6 +41,7 @@ const MEAL_TYPE_ORDER = new Map([
 
 const cooldowns = new Map();
 const pendingSchoolSelections = new Map();
+const pendingMealNavigation = new Map();
 const paginatedMealViews = new Map();
 
 const client = new Client({
@@ -224,6 +226,54 @@ const createMealPaginationRow = (nonce, page, totalPages) => {
   );
 };
 
+const createTomorrowMealRow = (nonce) => {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`meal_tomorrow:${nonce}`)
+      .setLabel('내일 급식 보기')
+      .setStyle(ButtonStyle.Primary),
+  );
+};
+
+const createSingleMealEmbed = (schoolName, formattedDate, meals) => {
+  const embed = new EmbedBuilder()
+    .setColor(0x0099FF)
+    .setTitle(`${truncateText(schoolName, 180)} 급식 식단표`)
+    .setDescription(`${parseDateString(formattedDate)} 식단입니다.`)
+    .setTimestamp();
+
+  meals.forEach(meal => {
+    let menuText = meal.menu;
+    if (!menuText || menuText.trim() === '') {
+      menuText = '메뉴 정보 없음';
+    }
+    if (menuText.length > 1024) menuText = `${menuText.substring(0, 1000)}...`;
+    embed.addFields({
+      name: `${meal.mealType} (${meal.calories})`,
+      value: menuText,
+    });
+  });
+
+  return embed;
+};
+
+const createTomorrowMealNavigation = ({ userId, officeCode, schoolCode, schoolName }) => {
+  const tomorrow = getKoreanToday();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const nonce = crypto.randomBytes(6).toString('hex');
+  pendingMealNavigation.set(nonce, {
+    userId,
+    officeCode,
+    schoolCode,
+    schoolName,
+    date: formatDate(tomorrow),
+    expiresAt: Date.now() + MEAL_NAV_TTL_MS,
+  });
+
+  return createTomorrowMealRow(nonce);
+};
+
 const cleanupExpiredEntries = () => {
   const now = Date.now();
 
@@ -233,6 +283,10 @@ const cleanupExpiredEntries = () => {
 
   for (const [key, selection] of pendingSchoolSelections) {
     if (selection.expiresAt <= now) pendingSchoolSelections.delete(key);
+  }
+
+  for (const [key, navigation] of pendingMealNavigation) {
+    if (navigation.expiresAt <= now) pendingMealNavigation.delete(key);
   }
 
   for (const [key, pageState] of paginatedMealViews) {
@@ -294,7 +348,7 @@ const parseCustomDate = (dateOption) => {
 };
 
 const parseMealDateOption = (dateOption) => {
-  const option = String(dateOption || '내일').trim();
+  const option = String(dateOption || '오늘').trim();
   const today = getKoreanToday();
 
   if (option === '이번주') {
@@ -464,7 +518,7 @@ client.on(Events.InteractionCreate, async interaction => {
         schoolName = user.school_name;
       }
 
-      const dateOption = interaction.options.getString('날짜') || '내일';
+      const dateOption = interaction.options.getString('날짜') || '오늘';
       const parsedDateOption = parseMealDateOption(dateOption);
 
       if (!parsedDateOption) {
@@ -523,30 +577,31 @@ client.on(Events.InteractionCreate, async interaction => {
         } else {
           const formattedDate = parsedDateOption.date;
           const meals = await getMeals(officeCode, schoolCode, formattedDate);
+          const isToday = formattedDate === formatDate(getKoreanToday());
+          const components = isToday
+            ? [createTomorrowMealNavigation({
+              userId: interaction.user.id,
+              officeCode,
+              schoolCode,
+              schoolName,
+            })]
+            : [];
 
           if (meals.length === 0) {
-            return interaction.editReply(`${parseDateString(formattedDate)}에는 ${escapeDiscordText(schoolName)}의 급식 정보가 없습니다.`);
+            return interaction.editReply({
+              content: `${parseDateString(formattedDate)}에는 ${escapeDiscordText(schoolName)}의 급식 정보가 없습니다.`,
+              components,
+              allowedMentions: { parse: [] },
+            });
           }
 
-          const embed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle(`${truncateText(schoolName, 180)} 급식 식단표`)
-            .setDescription(`${parseDateString(formattedDate)} 식단입니다.`)
-            .setTimestamp();
+          const embed = createSingleMealEmbed(schoolName, formattedDate, meals);
 
-          meals.forEach(meal => {
-            let menuText = meal.menu;
-            if (!menuText || menuText.trim() === '') {
-              menuText = '메뉴 정보 없음';
-            }
-            if (menuText.length > 1024) menuText = menuText.substring(0, 1000) + '...';
-            embed.addFields({
-              name: `${meal.mealType} (${meal.calories})`,
-              value: menuText
-            });
+          await interaction.editReply({
+            embeds: [embed],
+            components,
+            allowedMentions: { parse: [] },
           });
-
-          await interaction.editReply({ embeds: [embed] });
         }
       } catch (error) {
         console.error('급식 처리 오류:', error.message);
@@ -600,7 +655,58 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
   } else if (interaction.isButton()) {
-    if (interaction.customId.startsWith('meal_page:')) {
+    if (interaction.customId.startsWith('meal_tomorrow:')) {
+      cleanupExpiredEntries();
+
+      const [, nonce] = interaction.customId.split(':');
+      const navigation = pendingMealNavigation.get(nonce);
+
+      if (!navigation) {
+        return interaction.reply({
+          content: '버튼이 만료되었습니다. `/급식` 명령어를 다시 실행해주세요.',
+          ...privateReplyOptions(interaction),
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      if (navigation.userId !== interaction.user.id) {
+        return interaction.reply({
+          content: '이 버튼은 `/급식` 명령어를 실행한 사용자만 사용할 수 있습니다.',
+          ...privateReplyOptions(interaction),
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      await interaction.deferUpdate();
+
+      try {
+        const meals = await getMeals(navigation.officeCode, navigation.schoolCode, navigation.date);
+        pendingMealNavigation.delete(nonce);
+
+        if (meals.length === 0) {
+          return interaction.editReply({
+            content: `${parseDateString(navigation.date)}에는 ${escapeDiscordText(navigation.schoolName)}의 급식 정보가 없습니다.`,
+            embeds: [],
+            components: [],
+            allowedMentions: { parse: [] },
+          });
+        }
+
+        return interaction.editReply({
+          content: `**${escapeDiscordText(navigation.schoolName)}**의 내일 급식입니다.`,
+          embeds: [createSingleMealEmbed(navigation.schoolName, navigation.date, meals)],
+          components: [],
+          allowedMentions: { parse: [] },
+        });
+      } catch (error) {
+        console.error('내일 급식 처리 오류:', error.message);
+        return interaction.editReply({
+          content: '내일 급식 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 버튼을 다시 눌러주세요.',
+          components: [createTomorrowMealRow(nonce)],
+          allowedMentions: { parse: [] },
+        });
+      }
+    } else if (interaction.customId.startsWith('meal_page:')) {
       cleanupExpiredEntries();
 
       const [, nonce, direction] = interaction.customId.split(':');
