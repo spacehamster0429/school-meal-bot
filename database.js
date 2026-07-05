@@ -70,8 +70,13 @@ const saveUser = (userId, officeCode, schoolCode, schoolName) => {
   restrictDbFilePermissions();
 };
 
+const closeDatabase = () => {
+  if (db.open) db.close();
+};
+
 module.exports = {
   db,
   getUser,
   saveUser,
+  closeDatabase,
 };

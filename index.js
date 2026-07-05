@@ -16,7 +16,7 @@ const {
   ActivityType
 } = require('discord.js');
 const crypto = require('crypto');
-const { getUser, saveUser } = require('./database');
+const { getUser, saveUser, closeDatabase } = require('./database');
 const { searchSchools, getMeals, getMealsByRange } = require('./neis');
 
 const RATE_LIMIT_MS = 3000;
@@ -648,5 +648,28 @@ if (!process.env.DISCORD_TOKEN) {
   console.error('DISCORD_TOKEN is not set.');
   process.exit(1);
 }
+
+let isShuttingDown = false;
+const shutdown = (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`Received ${signal}; shutting down cleanly.`);
+  const forceExit = setTimeout(() => process.exit(1), 5000);
+  forceExit.unref();
+
+  try {
+    client.destroy();
+    closeDatabase();
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (error) {
+    console.error('Graceful shutdown failed:', error.message);
+    process.exit(1);
+  }
+};
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
 
 client.login(process.env.DISCORD_TOKEN);
