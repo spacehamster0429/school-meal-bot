@@ -19,6 +19,7 @@ WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
+COPY LICENSE NOTICE ./
 COPY index.js neis.js database.js deploy-commands.js ./
 
 RUN mkdir -p /data \
