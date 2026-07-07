@@ -740,7 +740,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.editReply('학교 검색 중 오류가 발생했습니다.');
       }
     } else if (interaction.commandName === '급식') {
-      const privateOnly = interaction.options.getBoolean('나만보기') ?? false;
+      const privateOnly = interaction.options.getString('나만보기') === '켜짐';
       await interaction.deferReply(privateOnlyReplyOptions(interaction, privateOnly));
 
       const schoolNameOptionRaw = interaction.options.getString('학교이름');

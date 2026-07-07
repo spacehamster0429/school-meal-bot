@@ -51,10 +51,14 @@ const commands = [
         .setMinLength(SCHOOL_NAME_MIN_LENGTH)
         .setMaxLength(SCHOOL_NAME_MAX_LENGTH)
         .setRequired(false))
-    .addBooleanOption(option =>
+    .addStringOption(option =>
       option.setName('나만보기')
         .setDescription('서버에서 결과를 나에게만 표시합니다. (기본값: 꺼짐)')
-        .setRequired(false)),
+        .setRequired(false)
+        .addChoices(
+          { name: '꺼짐', value: '꺼짐' },
+          { name: '켜짐', value: '켜짐' },
+        )),
 ].map(command => command.toJSON());
 
 const { DISCORD_TOKEN, CLIENT_ID } = process.env;
