@@ -2,16 +2,31 @@
 // Copyright 2026 우주햄찌
 
 require('dotenv').config({ quiet: true });
-const { REST, Routes, SlashCommandBuilder, InteractionContextType } = require('discord.js');
+const {
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  InteractionContextType,
+  ApplicationIntegrationType,
+} = require('discord.js');
 
 const SCHOOL_NAME_MIN_LENGTH = 2;
 const SCHOOL_NAME_MAX_LENGTH = 50;
-const COMMAND_CONTEXTS = [InteractionContextType.Guild, InteractionContextType.BotDM];
+const COMMAND_CONTEXTS = [
+  InteractionContextType.Guild,
+  InteractionContextType.BotDM,
+  InteractionContextType.PrivateChannel,
+];
+const COMMAND_INSTALL_TYPES = [
+  ApplicationIntegrationType.GuildInstall,
+  ApplicationIntegrationType.UserInstall,
+];
 
 const commands = [
   new SlashCommandBuilder()
     .setName('학교설정')
     .setDescription('자신의 학교를 검색하고 등록합니다.')
+    .setIntegrationTypes(COMMAND_INSTALL_TYPES)
     .setContexts(COMMAND_CONTEXTS)
     .addStringOption(option =>
       option.setName('이름')
@@ -23,6 +38,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName('급식')
     .setDescription('등록된 학교의 급식 정보를 확인합니다.')
+    .setIntegrationTypes(COMMAND_INSTALL_TYPES)
     .setContexts(COMMAND_CONTEXTS)
     .addStringOption(option =>
       option.setName('날짜')

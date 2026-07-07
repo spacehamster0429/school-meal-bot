@@ -2,6 +2,7 @@
 // Copyright 2026 우주햄찌
 
 require('dotenv').config({ quiet: true });
+const http = require('http');
 const {
   Client,
   GatewayIntentBits,
@@ -33,6 +34,22 @@ const EMBED_FIELD_SAFE_LENGTH = 1000;
 const EMBED_TOTAL_SAFE_LENGTH = 5500;
 const DATE_SUGGESTIONS = ['오늘', '내일', '모레', '이번주', '이번달'];
 const STATUS_MESSAGE = '맛있는 급식이 나오길 비는중..';
+const USER_INSTALL_INTEGRATION_TYPE = 1;
+const DISCORD_WEBHOOK_PING_TYPE = 0;
+const DISCORD_WEBHOOK_EVENT_TYPE = 1;
+const DISCORD_EVENT_WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
+const DISCORD_EVENT_WEBHOOK_DEFAULT_PATH = '/discord/events';
+const ED25519_SPKI_DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+const USER_INSTALL_WELCOME_MESSAGE = [
+  '급식봇을 개인 앱으로 추가해줘서 감사합니다!',
+  '',
+  '간단 사용법은 이렇습니다.',
+  '• `/학교설정 이름:학교명` — 내 기본 학교를 저장합니다.',
+  '• `/급식` — 저장한 학교의 오늘 급식을 보여줍니다.',
+  '• `/급식 날짜:내일` — 내일/모레/이번주/이번달도 볼 수 있습니다.',
+  '',
+  '처음이라면 먼저 `/학교설정`으로 학교를 등록해주세요.',
+].join('\n');
 const MEAL_TYPE_ORDER = new Map([
   ['조식', 0],
   ['중식', 1],
@@ -43,6 +60,8 @@ const cooldowns = new Map();
 const pendingSchoolSelections = new Map();
 const pendingMealNavigation = new Map();
 const paginatedMealViews = new Map();
+const pendingInstallWelcomeUserIds = new Set();
+let eventWebhookServer = null;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
@@ -68,6 +87,98 @@ const escapeDiscordText = (value, maxLength = MAX_DISPLAY_LENGTH) => {
   return truncateText(value, maxLength)
     .replace(/@/g, '@\u200b')
     .replace(/<([@#][^>]+)>/g, '<\u200b$1>');
+};
+
+const createHttpError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const normalizeWebhookPath = (value) => {
+  const path = String(value || DISCORD_EVENT_WEBHOOK_DEFAULT_PATH).trim() || DISCORD_EVENT_WEBHOOK_DEFAULT_PATH;
+  return path.startsWith('/') ? path : `/${path}`;
+};
+
+const parseWebhookPort = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (!/^\d+$/.test(text)) {
+    throw new Error('DISCORD_EVENT_WEBHOOK_PORT must be a number between 1 and 65535.');
+  }
+
+  const port = Number(text);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('DISCORD_EVENT_WEBHOOK_PORT must be a number between 1 and 65535.');
+  }
+
+  return port;
+};
+
+const createDiscordPublicKey = (publicKeyHex) => {
+  const text = String(publicKeyHex || '').trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(text)) {
+    throw new Error('DISCORD_PUBLIC_KEY must be a 32-byte hex string from the Discord Developer Portal.');
+  }
+
+  return crypto.createPublicKey({
+    key: Buffer.concat([ED25519_SPKI_DER_PREFIX, Buffer.from(text, 'hex')]),
+    format: 'der',
+    type: 'spki',
+  });
+};
+
+const getDiscordEventWebhookConfig = () => {
+  const port = parseWebhookPort(process.env.DISCORD_EVENT_WEBHOOK_PORT);
+  if (!port) return null;
+
+  return {
+    host: String(process.env.DISCORD_EVENT_WEBHOOK_HOST || '0.0.0.0').trim() || '0.0.0.0',
+    path: normalizeWebhookPath(process.env.DISCORD_EVENT_WEBHOOK_PATH),
+    port,
+    publicKey: createDiscordPublicKey(process.env.DISCORD_PUBLIC_KEY),
+  };
+};
+
+const readRequestBody = async (request) => {
+  const chunks = [];
+  let size = 0;
+
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > DISCORD_EVENT_WEBHOOK_MAX_BODY_BYTES) {
+      throw createHttpError(413, 'Payload too large.');
+    }
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+};
+
+const verifyDiscordEventSignature = ({ publicKey, timestamp, signature, body }) => {
+  if (!timestamp || !signature || !/^[0-9a-fA-F]{128}$/.test(String(signature))) {
+    return false;
+  }
+
+  return crypto.verify(
+    null,
+    Buffer.concat([Buffer.from(String(timestamp)), body]),
+    publicKey,
+    Buffer.from(String(signature), 'hex'),
+  );
+};
+
+const sendNoContent = (response) => {
+  response.writeHead(204);
+  response.end();
+};
+
+const sendTextResponse = (response, statusCode, message) => {
+  response.writeHead(statusCode, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  response.end(message);
 };
 
 const privateReplyOptions = (interaction) => {
@@ -309,6 +420,134 @@ const isRateLimited = (interaction) => {
   return 0;
 };
 
+const sendUserInstallWelcomeMessage = async (userId) => {
+  try {
+    await client.users.send(userId, {
+      content: USER_INSTALL_WELCOME_MESSAGE,
+      allowedMentions: { parse: [] },
+    });
+    console.log(`Sent user install welcome DM to ${userId}.`);
+  } catch (error) {
+    console.warn(`Failed to send user install welcome DM to ${userId}: ${error.message}`);
+  }
+};
+
+const queueUserInstallWelcomeMessage = (userId) => {
+  const normalizedUserId = String(userId || '').trim();
+  if (!/^\d{16,22}$/.test(normalizedUserId)) {
+    console.warn('Ignoring APPLICATION_AUTHORIZED event without a valid user id.');
+    return;
+  }
+
+  if (!client.isReady()) {
+    pendingInstallWelcomeUserIds.add(normalizedUserId);
+    return;
+  }
+
+  void sendUserInstallWelcomeMessage(normalizedUserId);
+};
+
+const flushPendingInstallWelcomeMessages = () => {
+  if (pendingInstallWelcomeUserIds.size === 0) return;
+
+  const userIds = [...pendingInstallWelcomeUserIds];
+  pendingInstallWelcomeUserIds.clear();
+  userIds.forEach(userId => queueUserInstallWelcomeMessage(userId));
+};
+
+const handleApplicationAuthorizedEvent = (data) => {
+  if (!data || Number(data.integration_type) !== USER_INSTALL_INTEGRATION_TYPE) {
+    return;
+  }
+
+  queueUserInstallWelcomeMessage(data.user?.id);
+};
+
+const handleDiscordEventWebhookPayload = (payload) => {
+  if (payload?.type === DISCORD_WEBHOOK_PING_TYPE) {
+    return;
+  }
+
+  if (payload?.type !== DISCORD_WEBHOOK_EVENT_TYPE) {
+    console.warn(`Ignoring unsupported Discord webhook payload type: ${payload?.type ?? 'unknown'}.`);
+    return;
+  }
+
+  const event = payload.event;
+  if (event?.type === 'APPLICATION_AUTHORIZED') {
+    handleApplicationAuthorizedEvent(event.data);
+  }
+};
+
+const handleDiscordEventWebhookRequest = async (request, response, config) => {
+  if (request.method !== 'POST') {
+    return sendTextResponse(response, 405, 'Method Not Allowed');
+  }
+
+  let requestUrl;
+  try {
+    requestUrl = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+  } catch {
+    return sendTextResponse(response, 400, 'Bad Request');
+  }
+
+  if (requestUrl.pathname !== config.path) {
+    return sendTextResponse(response, 404, 'Not Found');
+  }
+
+  const body = await readRequestBody(request);
+  const timestamp = request.headers['x-signature-timestamp'];
+  const signature = request.headers['x-signature-ed25519'];
+
+  if (!verifyDiscordEventSignature({
+    publicKey: config.publicKey,
+    timestamp,
+    signature,
+    body,
+  })) {
+    return sendTextResponse(response, 401, 'Invalid request signature.');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body.toString('utf8'));
+  } catch {
+    return sendTextResponse(response, 400, 'Invalid JSON payload.');
+  }
+
+  sendNoContent(response);
+  handleDiscordEventWebhookPayload(payload);
+};
+
+const startDiscordEventWebhookServer = () => {
+  const config = getDiscordEventWebhookConfig();
+  if (!config) return null;
+
+  const server = http.createServer((request, response) => {
+    handleDiscordEventWebhookRequest(request, response, config).catch(error => {
+      const statusCode = error.statusCode || 500;
+      const message = statusCode === 500 ? 'Internal Server Error' : error.message;
+      console.error('Discord event webhook request failed:', error.message);
+
+      if (!response.headersSent) {
+        sendTextResponse(response, statusCode, message);
+      } else {
+        response.end();
+      }
+    });
+  });
+
+  server.on('error', error => {
+    console.error('Discord event webhook server error:', error.message);
+  });
+
+  server.listen(config.port, config.host, () => {
+    console.log(`Discord event webhook server listening on ${config.host}:${config.port}${config.path}`);
+  });
+
+  return server;
+};
+
 client.once(Events.ClientReady, readyClient => {
   readyClient.user.setPresence({
     status: 'online',
@@ -318,6 +557,8 @@ client.once(Events.ClientReady, readyClient => {
       type: ActivityType.Custom,
     }],
   });
+
+  flushPendingInstallWelcomeMessages();
 
   console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 });
@@ -755,6 +996,13 @@ if (!process.env.DISCORD_TOKEN) {
   process.exit(1);
 }
 
+try {
+  eventWebhookServer = startDiscordEventWebhookServer();
+} catch (error) {
+  console.error('Failed to start Discord event webhook server:', error.message);
+  process.exit(1);
+}
+
 let isShuttingDown = false;
 const shutdown = (signal) => {
   if (isShuttingDown) return;
@@ -765,6 +1013,9 @@ const shutdown = (signal) => {
   forceExit.unref();
 
   try {
+    if (eventWebhookServer) {
+      eventWebhookServer.close();
+    }
     client.destroy();
     closeDatabase();
     clearTimeout(forceExit);

@@ -8,6 +8,7 @@
 
 - `/학교설정`: 학교를 검색해 사용자 기본 학교로 저장
 - `/급식`: 날짜를 생략하면 오늘 급식을 조회하고, 버튼으로 내일 급식을 바로 확인
+- 개인 계정에 앱을 추가하면 Discord Event Webhook으로 감사 DM과 기본 사용법 안내
 - 학교 검색 결과 선택 메뉴와 여러 날짜 페이지 이동
 - NEIS 요청 캐시, Discord 요청 속도 제한, SQLite WAL 저장
 - Podman/Docker 컨테이너 및 rootless Quadlet 예제
@@ -29,9 +30,16 @@ npm start
 DISCORD_TOKEN=your_discord_bot_token_here
 CLIENT_ID=your_discord_client_id_here
 NEIS_API_KEY=your_neis_api_key_here
+DISCORD_PUBLIC_KEY=your_discord_application_public_key_here
+DISCORD_EVENT_WEBHOOK_PORT=
+DISCORD_EVENT_WEBHOOK_PATH=/discord/events
 ```
 
 `NEIS_API_KEY`는 NEIS Open API 키입니다. 키가 없으면 NEIS의 무인증 허용 범위에서 요청합니다.
+
+개인 계정 앱 추가 감사 DM을 쓰려면 Discord Developer Portal에서 Webhook Events URL을 설정하고 `APPLICATION_AUTHORIZED` 이벤트를 구독해야 합니다. 봇은 `DISCORD_EVENT_WEBHOOK_PORT`가 설정된 경우에만 HTTP 수신기를 켭니다. URL 예시는 `https://example.com/discord/events`이고, `DISCORD_PUBLIC_KEY`는 Developer Portal의 General Information에 있는 Public Key입니다. Discord가 보낸 서명을 검증한 뒤, `integration_type: 1`인 사용자 설치 이벤트에만 DM을 보냅니다.
+
+개인 설치 명령어 컨텍스트가 반영되도록 설정 변경 후에는 명령어를 다시 배포하세요.
 
 구문 검사와 선택적 NEIS 스모크 테스트:
 
