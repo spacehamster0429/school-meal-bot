@@ -572,11 +572,20 @@ const formatDate = (date) => {
   return `${year}${month}${day}`;
 };
 
-const parseCustomDate = (dateOption) => {
-  const match = String(dateOption ?? '').trim().match(/^(\d{4})[-./]?(\d{2})[-./]?(\d{2})$/);
-  if (!match) return null;
+const parseCustomDate = (dateOption, baseDate = getKoreanToday()) => {
+  const option = String(dateOption ?? '').trim();
+  const fullDateMatch = option.match(/^(\d{4})[-./]?(\d{2})[-./]?(\d{2})$/);
+  const koreanMonthDayMatch = option.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일?$/);
 
-  const [, yearText, monthText, dayText] = match;
+  if (!fullDateMatch && !koreanMonthDayMatch) return null;
+
+  const [yearText, monthText, dayText] = fullDateMatch
+    ? fullDateMatch.slice(1)
+    : [
+      String(baseDate.getFullYear()),
+      koreanMonthDayMatch[1].padStart(2, '0'),
+      koreanMonthDayMatch[2].padStart(2, '0'),
+    ];
   const year = Number(yearText);
   const month = Number(monthText);
   const day = Number(dayText);
@@ -634,7 +643,7 @@ const parseMealDateOption = (dateOption) => {
     return { type: 'single', date: formatDate(targetDate) };
   }
 
-  const customDate = parseCustomDate(option);
+  const customDate = parseCustomDate(option, today);
   if (customDate) {
     return { type: 'single', date: customDate };
   }
@@ -764,7 +773,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const parsedDateOption = parseMealDateOption(dateOption);
 
       if (!parsedDateOption) {
-        return interaction.editReply('날짜는 `오늘`, `내일`, `모레`, `이번주`, `이번달` 또는 `20220501` 같은 YYYYMMDD 형식으로 입력해주세요.');
+        return interaction.editReply('날짜는 `오늘`, `내일`, `모레`, `이번주`, `이번달`, `20260521` 또는 `5월 21일` 형식으로 입력해주세요.');
       }
 
       try {

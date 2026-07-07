@@ -42,7 +42,7 @@ const commands = [
     .setContexts(COMMAND_CONTEXTS)
     .addStringOption(option =>
       option.setName('날짜')
-        .setDescription('오늘/내일/모레/이번주/이번달 또는 YYYYMMDD (기본값: 오늘)')
+        .setDescription('오늘/내일/모레/이번주/이번달, YYYYMMDD 또는 5월 21일 (기본값: 오늘)')
         .setAutocomplete(true)
         .setRequired(false))
     .addStringOption(option =>
