@@ -14,7 +14,8 @@ const {
   ButtonBuilder,
   ButtonStyle,
   Partials,
-  ActivityType
+  ActivityType,
+  MessageFlags,
 } = require('discord.js');
 const crypto = require('crypto');
 const { getUser, saveUser, closeDatabase } = require('./database');
@@ -183,7 +184,11 @@ const sendTextResponse = (response, statusCode, message) => {
 };
 
 const privateReplyOptions = (interaction) => {
-  return interaction.inGuild() ? { ephemeral: true } : {};
+  return interaction.inGuild() ? { flags: MessageFlags.Ephemeral } : {};
+};
+
+const privateOnlyReplyOptions = (interaction, enabled) => {
+  return interaction.inGuild() && enabled ? { flags: MessageFlags.Ephemeral } : {};
 };
 
 const getKoreanToday = () => {
@@ -735,7 +740,8 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.editReply('학교 검색 중 오류가 발생했습니다.');
       }
     } else if (interaction.commandName === '급식') {
-      await interaction.deferReply();
+      const privateOnly = interaction.options.getBoolean('나만보기') ?? false;
+      await interaction.deferReply(privateOnlyReplyOptions(interaction, privateOnly));
 
       const schoolNameOptionRaw = interaction.options.getString('학교이름');
       const schoolNameOption = schoolNameOptionRaw ? normalizeSchoolQuery(schoolNameOptionRaw) : null;

@@ -50,6 +50,10 @@ const commands = [
         .setDescription('검색할 학교의 이름 (입력하지 않으면 등록된 학교 사용)')
         .setMinLength(SCHOOL_NAME_MIN_LENGTH)
         .setMaxLength(SCHOOL_NAME_MAX_LENGTH)
+        .setRequired(false))
+    .addBooleanOption(option =>
+      option.setName('나만보기')
+        .setDescription('서버에서 결과를 나에게만 표시합니다. (기본값: 꺼짐)')
         .setRequired(false)),
 ].map(command => command.toJSON());
 
