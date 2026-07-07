@@ -59,6 +59,12 @@ const commands = [
           { name: '꺼짐', value: '꺼짐' },
           { name: '켜짐', value: '켜짐' },
         )),
+
+  new SlashCommandBuilder()
+    .setName('내정보')
+    .setDescription('급식봇에 저장된 내 학교 설정을 확인합니다.')
+    .setIntegrationTypes(COMMAND_INSTALL_TYPES)
+    .setContexts(COMMAND_CONTEXTS),
 ].map(command => command.toJSON());
 
 const { DISCORD_TOKEN, CLIENT_ID } = process.env;

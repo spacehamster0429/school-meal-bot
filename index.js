@@ -50,6 +50,7 @@ const USER_INSTALL_WELCOME_MESSAGE = [
   '• `/학교설정` — 저장한 학교 정보를 삭제할 수 있습니다.',
   '• `/급식` — 저장한 학교의 오늘 급식을 보여줍니다.',
   '• `/급식 날짜:내일` — 내일/모레/이번주/이번달도 볼 수 있습니다.',
+  '• `/내정보` — 저장된 학교 설정을 확인합니다.',
 ].join('\n');
 const MEAL_TYPE_ORDER = new Map([
   ['조식', 0],
@@ -406,6 +407,26 @@ const createSingleMealReplyContent = (schoolName, formattedDate, baseDate = getK
   }
 
   return `${escapeDiscordText(schoolName, 180)}의 ${dateLabel} 급식입니다.`;
+};
+
+const createUserInfoReplyContent = (user) => {
+  if (!user) {
+    return [
+      '급식봇에 저장된 학교 설정이 없습니다.',
+      '',
+      '등록하려면 `/학교설정 이름:학교명`을 사용해주세요.',
+    ].join('\n');
+  }
+
+  return [
+    '급식봇에 저장된 내 학교 설정입니다.',
+    '',
+    `학교: **${escapeDiscordText(user.school_name, 180)}**`,
+    `교육청 코드: ${escapeDiscordText(user.office_code, 40)}`,
+    `학교 코드: ${escapeDiscordText(user.school_code, 40)}`,
+    '',
+    '삭제하려면 `/학교설정`을 이름 없이 실행해주세요.',
+  ].join('\n');
 };
 
 const createTomorrowMealNavigation = ({ userId, officeCode, schoolCode, schoolName }) => {
@@ -930,6 +951,13 @@ client.on(Events.InteractionCreate, async interaction => {
         console.error('급식 처리 오류:', error.message);
         await interaction.editReply('급식 정보를 가져오는 중 오류가 발생했습니다.');
       }
+    } else if (interaction.commandName === '내정보') {
+      const user = getUser(interaction.user.id);
+      return interaction.reply({
+        content: createUserInfoReplyContent(user),
+        ...privateReplyOptions(interaction),
+        allowedMentions: { parse: [] },
+      });
     }
   } else if (interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith('select_school:')) {
