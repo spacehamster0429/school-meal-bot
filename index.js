@@ -18,11 +18,12 @@ const {
   MessageFlags,
 } = require('discord.js');
 const crypto = require('crypto');
-const { getUser, saveUser, closeDatabase } = require('./database');
+const { getUser, saveUser, deleteUser, closeDatabase } = require('./database');
 const { searchSchools, getMeals, getMealsByRange } = require('./neis');
 
 const RATE_LIMIT_MS = 3000;
 const SELECT_TTL_MS = 10 * 60 * 1000;
+const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
 const MEAL_NAV_TTL_MS = 10 * 60 * 1000;
 const PAGE_TTL_MS = 30 * 60 * 1000;
 const SCHOOL_NAME_MIN_LENGTH = 2;
@@ -46,6 +47,7 @@ const USER_INSTALL_WELCOME_MESSAGE = [
   '',
   '간단 사용법은 이렇습니다.',
   '• `/학교설정 이름:학교명` — 내 기본 학교를 저장합니다.',
+  '• `/학교설정` — 저장한 학교 정보를 삭제할 수 있습니다.',
   '• `/급식` — 저장한 학교의 오늘 급식을 보여줍니다.',
   '• `/급식 날짜:내일` — 내일/모레/이번주/이번달도 볼 수 있습니다.',
 ].join('\n');
@@ -57,6 +59,7 @@ const MEAL_TYPE_ORDER = new Map([
 
 const cooldowns = new Map();
 const pendingSchoolSelections = new Map();
+const pendingSchoolDeletions = new Map();
 const pendingMealNavigation = new Map();
 const paginatedMealViews = new Map();
 const pendingInstallWelcomeUserIds = new Set();
@@ -352,6 +355,19 @@ const createTomorrowMealRow = (nonce) => {
   );
 };
 
+const createSchoolDeletionRow = (nonce) => {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`delete_school:${nonce}:confirm`)
+      .setLabel('삭제')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`delete_school:${nonce}:cancel`)
+      .setLabel('취소')
+      .setStyle(ButtonStyle.Secondary),
+  );
+};
+
 const createSingleMealEmbed = (schoolName, meals) => {
   const embed = new EmbedBuilder()
     .setColor(0x0099FF)
@@ -418,6 +434,10 @@ const cleanupExpiredEntries = () => {
 
   for (const [key, selection] of pendingSchoolSelections) {
     if (selection.expiresAt <= now) pendingSchoolSelections.delete(key);
+  }
+
+  for (const [key, deletion] of pendingSchoolDeletions) {
+    if (deletion.expiresAt <= now) pendingSchoolDeletions.delete(key);
   }
 
   for (const [key, navigation] of pendingMealNavigation) {
@@ -706,9 +726,36 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.commandName === '학교설정') {
-      const schoolName = normalizeSchoolQuery(interaction.options.getString('이름'));
+      const schoolNameRaw = interaction.options.getString('이름');
+      const schoolNameText = String(schoolNameRaw ?? '').trim();
+      const schoolName = schoolNameText ? normalizeSchoolQuery(schoolNameText) : null;
 
       await interaction.deferReply(privateReplyOptions(interaction));
+
+      if (!schoolNameText) {
+        cleanupExpiredEntries();
+
+        const user = getUser(interaction.user.id);
+        if (!user) {
+          return interaction.editReply({
+            content: '삭제할 학교 설정이 없습니다. 새로 등록하려면 `/학교설정 이름:학교명`을 사용해주세요.',
+            allowedMentions: { parse: [] },
+          });
+        }
+
+        const nonce = crypto.randomBytes(6).toString('hex');
+        pendingSchoolDeletions.set(nonce, {
+          userId: interaction.user.id,
+          schoolName: user.school_name,
+          expiresAt: Date.now() + DELETE_CONFIRM_TTL_MS,
+        });
+
+        return interaction.editReply({
+          content: `현재 **${escapeDiscordText(user.school_name)}**이(가) 저장되어 있습니다.\n이 학교 설정을 삭제할까요? 삭제 후에는 언제든 다시 등록할 수 있습니다.`,
+          components: [createSchoolDeletionRow(nonce)],
+          allowedMentions: { parse: [] },
+        });
+      }
 
       if (!schoolName) {
         return interaction.editReply(`학교 이름은 ${SCHOOL_NAME_MIN_LENGTH}~${SCHOOL_NAME_MAX_LENGTH}자로 입력해주세요.`);
@@ -931,6 +978,48 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
   } else if (interaction.isButton()) {
+    if (interaction.customId.startsWith('delete_school:')) {
+      cleanupExpiredEntries();
+
+      const [, nonce, action] = interaction.customId.split(':');
+      const deletion = pendingSchoolDeletions.get(nonce);
+
+      if (!deletion) {
+        return interaction.reply({
+          content: '삭제 확인 시간이 만료되었습니다. `/학교설정`을 다시 실행해주세요.',
+          ...privateReplyOptions(interaction),
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      if (deletion.userId !== interaction.user.id) {
+        return interaction.reply({
+          content: '이 삭제 확인 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다.',
+          ...privateReplyOptions(interaction),
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      pendingSchoolDeletions.delete(nonce);
+
+      if (action === 'confirm') {
+        const deleted = deleteUser(interaction.user.id);
+        return interaction.update({
+          content: deleted
+            ? `저장된 학교 설정 **${escapeDiscordText(deletion.schoolName)}**을(를) 삭제했습니다.`
+            : '이미 삭제되었거나 저장된 학교 설정이 없습니다.',
+          components: [],
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      return interaction.update({
+        content: '학교 설정 삭제를 취소했습니다.',
+        components: [],
+        allowedMentions: { parse: [] },
+      });
+    }
+
     if (interaction.customId.startsWith('meal_tomorrow:')) {
       cleanupExpiredEntries();
 

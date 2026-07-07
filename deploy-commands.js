@@ -25,15 +25,15 @@ const COMMAND_INSTALL_TYPES = [
 const commands = [
   new SlashCommandBuilder()
     .setName('학교설정')
-    .setDescription('자신의 학교를 검색하고 등록합니다.')
+    .setDescription('자신의 학교를 검색·등록하거나 저장된 학교 설정을 삭제합니다.')
     .setIntegrationTypes(COMMAND_INSTALL_TYPES)
     .setContexts(COMMAND_CONTEXTS)
     .addStringOption(option =>
       option.setName('이름')
-        .setDescription('검색할 학교의 이름을 입력하세요 (예: OO고등학교)')
+        .setDescription('검색할 학교 이름입니다. 비워두면 저장된 학교 삭제를 확인합니다.')
         .setMinLength(SCHOOL_NAME_MIN_LENGTH)
         .setMaxLength(SCHOOL_NAME_MAX_LENGTH)
-        .setRequired(true)),
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('급식')

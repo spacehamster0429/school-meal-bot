@@ -70,6 +70,15 @@ const saveUser = (userId, officeCode, schoolCode, schoolName) => {
   restrictDbFilePermissions();
 };
 
+const deleteUser = (userId) => {
+  if (!isSnowflake(userId)) return false;
+
+  const stmt = db.prepare('DELETE FROM users WHERE user_id = ?');
+  const result = stmt.run(userId);
+  restrictDbFilePermissions();
+  return result.changes > 0;
+};
+
 const closeDatabase = () => {
   if (db.open) db.close();
 };
@@ -78,5 +87,6 @@ module.exports = {
   db,
   getUser,
   saveUser,
+  deleteUser,
   closeDatabase,
 };
