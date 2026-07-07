@@ -352,11 +352,10 @@ const createTomorrowMealRow = (nonce) => {
   );
 };
 
-const createSingleMealEmbed = (schoolName, formattedDate, meals) => {
+const createSingleMealEmbed = (schoolName, meals) => {
   const embed = new EmbedBuilder()
     .setColor(0x0099FF)
     .setTitle(`${truncateText(schoolName, 180)} 급식 식단표`)
-    .setDescription(`${parseDateString(formattedDate)} 식단입니다.`)
     .setTimestamp();
 
   meals.forEach(meal => {
@@ -372,6 +371,25 @@ const createSingleMealEmbed = (schoolName, formattedDate, meals) => {
   });
 
   return embed;
+};
+
+const createSingleMealReplyContent = (schoolName, formattedDate, baseDate = getKoreanToday()) => {
+  const today = new Date(baseDate);
+  const tomorrow = new Date(baseDate);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfterTomorrow = new Date(baseDate);
+  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+
+  let dateLabel = parseDateString(formattedDate);
+  if (formattedDate === formatDate(today)) {
+    dateLabel = '오늘';
+  } else if (formattedDate === formatDate(tomorrow)) {
+    dateLabel = '내일';
+  } else if (formattedDate === formatDate(dayAfterTomorrow)) {
+    dateLabel = '모레';
+  }
+
+  return `${escapeDiscordText(schoolName, 180)}의 ${dateLabel} 급식입니다.`;
 };
 
 const createTomorrowMealNavigation = ({ userId, officeCode, schoolCode, schoolName }) => {
@@ -852,9 +870,10 @@ client.on(Events.InteractionCreate, async interaction => {
             });
           }
 
-          const embed = createSingleMealEmbed(schoolName, formattedDate, meals);
+          const embed = createSingleMealEmbed(schoolName, meals);
 
           await interaction.editReply({
+            content: createSingleMealReplyContent(schoolName, formattedDate),
             embeds: [embed],
             components,
             allowedMentions: { parse: [] },
@@ -950,8 +969,8 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         return interaction.editReply({
-          content: `**${escapeDiscordText(navigation.schoolName)}**의 내일 급식입니다.`,
-          embeds: [createSingleMealEmbed(navigation.schoolName, navigation.date, meals)],
+          content: createSingleMealReplyContent(navigation.schoolName, navigation.date),
+          embeds: [createSingleMealEmbed(navigation.schoolName, meals)],
           components: [],
           allowedMentions: { parse: [] },
         });
