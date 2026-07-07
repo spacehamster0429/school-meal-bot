@@ -169,7 +169,10 @@ const verifyDiscordEventSignature = ({ publicKey, timestamp, signature, body }) 
 };
 
 const sendNoContent = (response) => {
-  response.writeHead(204);
+  response.writeHead(204, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  });
   response.end();
 };
 
