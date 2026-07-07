@@ -41,14 +41,12 @@ const DISCORD_EVENT_WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 const DISCORD_EVENT_WEBHOOK_DEFAULT_PATH = '/discord/events';
 const ED25519_SPKI_DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 const USER_INSTALL_WELCOME_MESSAGE = [
-  '급식봇을 개인 앱으로 추가해줘서 감사합니다!',
+  '급식봇을 선택해 주셔서 감사합니다!',
   '',
   '간단 사용법은 이렇습니다.',
   '• `/학교설정 이름:학교명` — 내 기본 학교를 저장합니다.',
   '• `/급식` — 저장한 학교의 오늘 급식을 보여줍니다.',
   '• `/급식 날짜:내일` — 내일/모레/이번주/이번달도 볼 수 있습니다.',
-  '',
-  '처음이라면 먼저 `/학교설정`으로 학교를 등록해주세요.',
 ].join('\n');
 const MEAL_TYPE_ORDER = new Map([
   ['조식', 0],
