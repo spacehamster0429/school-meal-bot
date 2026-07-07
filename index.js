@@ -816,7 +816,7 @@ client.on(Events.InteractionCreate, async interaction => {
           const partialNotice = meals.isPartial
             ? `\nNEIS API 키가 없어 전체 ${meals.totalCount}식 중 ${meals.length}식만 표시됩니다.`
             : '';
-          const replyContent = `요청하신 **${escapeDiscordText(schoolName)}**의 ${titleStr} 식단표입니다! 표시 ${dayCount}일 / ${meals.length}식${partialNotice}`;
+          const replyContent = `**${escapeDiscordText(schoolName)}**의 ${titleStr} 식단표입니다. 표시 ${dayCount}일 / ${meals.length}식${partialNotice}`;
 
           const buildEmbed = (chunk, page) => {
             const embed = new EmbedBuilder()
