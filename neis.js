@@ -55,6 +55,13 @@ const normalizeMenu = (value) => {
   return normalizeText(value)
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/?[^>]+>/g, '')
+    // NEIS occasionally includes stray grave accents after menu names.
+    // Discord treats paired backticks as inline-code delimiters, so strip them.
+    .replace(/[`´]/g, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join('\n')
     .trim();
 };
 
