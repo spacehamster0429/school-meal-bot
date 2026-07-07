@@ -10,8 +10,7 @@ EnvironmentFile=%h/.config/school-meal-bot/school-meal-bot.env
 Volume=%h/.local/share/school-meal-bot:/data:Z
 UserNS=keep-id:uid=1000,gid=1000
 Pull=never
-# Discord Event Webhook을 받을 때만 환경변수 포트와 맞춰 열어주세요.
-# PublishPort=127.0.0.1:3031:3031
+PublishPort=127.0.0.1:3031:3031
 ReadOnly=true
 NoNewPrivileges=true
 Tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m
