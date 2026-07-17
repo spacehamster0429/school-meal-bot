@@ -18,7 +18,13 @@ const {
   MessageFlags,
 } = require('discord.js');
 const crypto = require('crypto');
-const { getUser, saveUser, deleteUser, closeDatabase } = require('./database');
+const { db, getUser, saveUser, deleteUser, closeDatabase } = require('./database');
+const {
+  DEFAULT_HEALTH_HOST,
+  closeHealthServer,
+  createHealthServer,
+  parseHealthPort,
+} = require('./health-server');
 const { searchSchools, getMeals, getMealsByRange } = require('./neis');
 
 const RATE_LIMIT_MS = 3000;
@@ -41,6 +47,8 @@ const DISCORD_WEBHOOK_PING_TYPE = 0;
 const DISCORD_WEBHOOK_EVENT_TYPE = 1;
 const DISCORD_EVENT_WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 const DISCORD_EVENT_WEBHOOK_DEFAULT_PATH = '/discord/events';
+const HEALTH_HOST = String(process.env.HEALTH_HOST || DEFAULT_HEALTH_HOST).trim() || DEFAULT_HEALTH_HOST;
+const HEALTH_PORT = parseHealthPort(process.env.HEALTH_PORT);
 const ED25519_SPKI_DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 const USER_INSTALL_WELCOME_MESSAGE = [
   '급식봇을 선택해 주셔서 감사합니다!',
@@ -65,12 +73,32 @@ const pendingMealNavigation = new Map();
 const paginatedMealViews = new Map();
 const pendingInstallWelcomeUserIds = new Set();
 let eventWebhookServer = null;
+let healthServer = null;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel],
   allowedMentions: { parse: [] },
 });
+
+const isApplicationReady = () => {
+  if (!client.isReady() || !db.open) return false;
+  return db.prepare('SELECT 1 AS ready').get()?.ready === 1;
+};
+
+const startHealthServer = () => {
+  const server = createHealthServer({
+    isReady: isApplicationReady,
+  });
+  server.once('error', (error) => {
+    console.error('Health server error:', error.message);
+    process.exit(1);
+  });
+  server.listen(HEALTH_PORT, HEALTH_HOST, () => {
+    console.log(`Health server listening on ${HEALTH_HOST}:${HEALTH_PORT}/healthz`);
+  });
+  return server;
+};
 
 const normalizeSchoolQuery = (value) => {
   const query = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -1149,14 +1177,15 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 try {
+  healthServer = startHealthServer();
   eventWebhookServer = startDiscordEventWebhookServer();
 } catch (error) {
-  console.error('Failed to start Discord event webhook server:', error.message);
+  console.error('Failed to start HTTP servers:', error.message);
   process.exit(1);
 }
 
 let isShuttingDown = false;
-const shutdown = (signal) => {
+const shutdown = async (signal) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
@@ -1165,10 +1194,11 @@ const shutdown = (signal) => {
   forceExit.unref();
 
   try {
-    if (eventWebhookServer) {
-      eventWebhookServer.close();
-    }
     client.destroy();
+    await Promise.all([
+      closeHealthServer(eventWebhookServer),
+      closeHealthServer(healthServer),
+    ]);
     closeDatabase();
     clearTimeout(forceExit);
     process.exit(0);
@@ -1178,7 +1208,7 @@ const shutdown = (signal) => {
   }
 };
 
-process.once('SIGTERM', () => shutdown('SIGTERM'));
-process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.once('SIGINT', () => { void shutdown('SIGINT'); });
 
 client.login(process.env.DISCORD_TOKEN);
