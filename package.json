@@ -12,7 +12,8 @@
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "check": "node --check index.js && node --check neis.js && node --check database.js && node --check deploy-commands.js && node --check test.js",
+    "check": "node --check index.js && node --check neis.js && node --check database.js && node --check deploy-commands.js && node --check health-server.js && node --check test.js && node --test test/*.test.js",
+    "test": "node --test test/*.test.js",
     "smoke:neis": "node test.js"
   },
   "engines": {

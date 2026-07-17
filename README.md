@@ -54,14 +54,16 @@ npm run smoke:neis -- "검색할 학교명"
 ## 컨테이너
 
 ```bash
-podman build -t localhost/school-meal-bot:latest .
+podman build --format docker -t localhost/school-meal-bot:latest .
 podman run --rm \
   --env-file .env \
   -v school-meal-data:/data:Z \
   localhost/school-meal-bot:latest
 ```
 
-`deploy/school-meal-bot.container`는 rootless Podman Quadlet 예제입니다. 환경변수 파일은 `~/.config/school-meal-bot/school-meal-bot.env`, 데이터는 `~/.local/share/school-meal-bot`에 둡니다.
+Podman으로 이미지의 `HEALTHCHECK` 메타데이터를 보존하려면 Docker 이미지 형식으로 빌드해야 합니다. `deploy/school-meal-bot.container`는 rootless Podman Quadlet 예제입니다. 환경변수 파일은 `~/.config/school-meal-bot/school-meal-bot.env`, 데이터는 `~/.local/share/school-meal-bot`에 둡니다.
+
+컨테이너 내부의 `127.0.0.1:3032/healthz`는 Discord 연결과 SQLite 연결이 모두 준비된 경우에만 `200`을 반환합니다. 이 포트는 호스트에 공개할 필요가 없습니다.
 
 ## 데이터와 개인정보
 
